@@ -8,7 +8,7 @@
 It works as follows,
 
 1. Fetch All `HelmReleases` resources in the running cluster
-2. Visit their underlying Helm Repository, then get the latest version
+2. Get the latest chart version from their underlying Helm Repository
 3. If it is newer than current one, create Pull Request to rewrite the version tag
 
 ## How to use
