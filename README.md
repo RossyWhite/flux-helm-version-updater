@@ -1,4 +1,4 @@
-[![goreleaser](https://github.com/RossyWhite/flux-helm-version-updater/actions/workflows/release.yaml/badge.svg)](https://github.com/RossyWhite/flux-helm-version-updater/actions/workflows/release.yaml)
+[![build](https://github.com/RossyWhite/flux-helm-version-updater/actions/workflows/release.yaml/badge.svg)](https://github.com/RossyWhite/flux-helm-version-updater/actions/workflows/release.yaml)
 [![Release](https://img.shields.io/github/release/RossyWhite/flux-helm-version-updater.svg)](https://github.com/RossyWhite/flux-helm-version-updater/releases/latest)
 
 # flux-helm-version-updater
