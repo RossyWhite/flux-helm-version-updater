@@ -1,6 +1,7 @@
 package setter
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/xerrors"
 	"k8s.io/kube-openapi/pkg/validation/spec"
@@ -8,6 +9,10 @@ import (
 	"sigs.k8s.io/kustomize/kyaml/fieldmeta"
 	"sigs.k8s.io/kustomize/kyaml/kio"
 	"sigs.k8s.io/kustomize/kyaml/setters2"
+)
+
+var (
+	ErrMarkNotFound = errors.New("no marks were found")
 )
 
 func init() {
@@ -39,6 +44,10 @@ func Execute(path string, key client.ObjectKey, value string) error {
 
 	if err := p.Execute(); err != nil {
 		return xerrors.Errorf("failed to execute setter: %+w", err)
+	}
+
+	if instance.Count == 0 {
+		return ErrMarkNotFound
 	}
 
 	return nil

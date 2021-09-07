@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"io"
 	"log"
 	"net/url"
@@ -193,26 +194,13 @@ func (r *helmVersionUpdater) getLatestChartVer(ctx context.Context, hr *helmv2.H
 
 // createVersionUpdatePR create a pull request which replaces the version tag with the latest version.
 func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helmv2.HelmRelease, v string) error {
-	branchName := fmt.Sprintf("%s-%s-%s", hr.Namespace, hr.Name, v)
+	branchName := fmt.Sprintf("helmupdate-%s-%s", hr.Namespace, hr.Name)
 	if r.conf.Prefix != "" {
 		branchName = fmt.Sprintf("%s-%s", r.conf.Prefix, branchName)
 	}
 
-	if err := r.wt.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewRemoteReferenceName("origin", branchName),
-	}); err == nil {
-		log.Printf("PR for '%s/%s' already exists\n", hr.Namespace, hr.Name)
-		return nil
-	}
-
-	err := r.wt.Checkout(&git.CheckoutOptions{
-		Create: true,
-		Hash:   r.head.Hash(),
-		Branch: plumbing.NewBranchReferenceName(branchName),
-	})
-
-	if err != nil {
-		return xerrors.Errorf("failed to checkout: %+w", err)
+	if err := r.checkout(branchName); err != nil {
+		return err
 	}
 
 	path := r.gitRoot
@@ -221,36 +209,43 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 	}
 
 	if err := setter.Execute(
-		path,
-		types.NamespacedName{
+		path, types.NamespacedName{
 			Namespace: hr.Namespace,
-			Name:      hr.Name,
-		}, v); err != nil {
+			Name:      hr.Name}, v,
+	); err != nil {
+		if err == setter.ErrMarkNotFound {
+			return nil
+		}
 		return xerrors.Errorf("failed to set new version: %+w", err)
 	}
 
-	_, err = r.wt.Add(".")
-	if err != nil {
+	if s, _ := r.wt.Status(); s.String() == "" {
+		return nil
+	}
+
+	if _, err := r.wt.Add("."); err != nil {
 		return xerrors.Errorf("failed to add: %+w", err)
 	}
 
-	msg := fmt.Sprintf("Update HelmRelease %s/%s from %s to %s", hr.Namespace, hr.Name, hr.Spec.Chart.Spec.Version, v)
+	msg := fmt.Sprintf("Update HelmRelease %s/%s to %s", hr.Namespace, hr.Name, v)
 	if r.conf.Prefix != "" {
 		msg = fmt.Sprintf("[%s] %s", r.conf.Prefix, msg)
 	}
-	_, err = r.wt.Commit(msg, &git.CommitOptions{
+	if _, err := r.wt.Commit(msg, &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  r.conf.Name,
 			Email: r.conf.Email,
 			When:  time.Now(),
 		},
-	})
-
-	if err != nil {
+	}); err != nil {
 		return xerrors.Errorf("failed to commit: %+w", err)
 	}
 
-	if err := r.repo.Push(&git.PushOptions{Auth: &http.BasicAuth{Username: r.conf.GithubToken}}); err != nil {
+	if err := r.repo.Push(&git.PushOptions{
+		Auth:       &http.BasicAuth{Username: r.conf.GithubToken},
+		Progress:   io.Discard,
+		RemoteName: "origin",
+	}); err != nil {
 		return xerrors.Errorf("failed to push: %+w", err)
 	}
 
@@ -261,14 +256,20 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 	)
 
 	pr := &github.NewPullRequest{
-		Title: github.String(msg),
+		Title: github.String(fmt.Sprintf("Update HelmRelease %s/%s", hr.Namespace, hr.Name)),
 		Base:  github.String(r.head.Name().Short()),
 		Head:  github.String(branchName),
 	}
 
 	owner, repo := parseRepoURL(r.conf.Target)
-	_, _, err = gh.PullRequests.Create(ctx, owner, repo, pr)
-	if err != nil {
+	if prs, _, _ := gh.PullRequests.List(ctx, owner, repo,
+		&github.PullRequestListOptions{
+			Base: r.head.Name().Short(),
+			Head: branchName}); len(prs) > 0 {
+		return nil
+	}
+
+	if _, _, err := gh.PullRequests.Create(ctx, owner, repo, pr); err != nil {
 		return xerrors.Errorf("failed to PR: %+w", err)
 	}
 
@@ -288,4 +289,31 @@ func parseRepoURL(repoURL string) (string, string) {
 	}
 
 	return s[0], s[1]
+}
+
+func (r *helmVersionUpdater) checkout(branchName string) error {
+	localRefName := plumbing.NewBranchReferenceName(branchName)
+	remoteRefName := plumbing.NewRemoteReferenceName("origin", branchName)
+
+	_, err := r.repo.Reference(remoteRefName, true)
+
+	if err != nil {
+		if e := r.wt.Checkout(&git.CheckoutOptions{Create: true, Hash: r.head.Hash(), Branch: localRefName}); e != nil {
+			return xerrors.Errorf("failed to checkout: %+w", e)
+		}
+	} else {
+		if e := r.repo.CreateBranch(&gitconfig.Branch{Name: branchName, Remote: "origin", Merge: localRefName}); e != nil {
+			return xerrors.Errorf("failed to create branch: %+w", e)
+		}
+		sym := plumbing.NewSymbolicReference(localRefName, remoteRefName)
+		if e := r.repo.Storer.SetReference(sym); e != nil {
+			return xerrors.Errorf("failed to set reference: %+w", e)
+		}
+
+		if e := r.wt.Checkout(&git.CheckoutOptions{Branch: localRefName}); e != nil {
+			return xerrors.Errorf("failed to checkout: %+w", e)
+		}
+	}
+
+	return nil
 }
