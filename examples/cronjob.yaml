@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: helm-updater-checker
+spec:
+  schedule: "* */10 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: checker
+            image: ghcr.io/rossywhite/flux-helm-version-updater:latest
+            imagePullPolicy: IfNotPresent
+            args:
+            - --git-name=<your name>
+            - --git-email=<your email>
+            - --target=https://github.com/<owner>/<repo>
+            - --path=<relative path of the repository to check update>
+            - --prefix=<prefix of branch name of the PR>
+            env:
+              - name: GITHUB_TOKEN
+                value: <your token>
+          restartPolicy: OnFailure

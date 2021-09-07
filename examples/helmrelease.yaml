@@ -1,0 +1,16 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+spec:
+  chart:
+    spec:
+      chart: cluster-autoscaler
+      sourceRef:
+        name: cluster-autoscaler
+        namespace: flux-system
+        kind: HelmRepository
+      version: 9.10.2 # {"$helmversionupdate": "kube-system:cluster-autoscaler"}
+  targetNamespace: kube-system
+  values: {}
