@@ -2,13 +2,14 @@ package helm
 
 import (
 	"errors"
-	"github.com/hashicorp/go-version"
-	"golang.org/x/xerrors"
-	helmrepo "helm.sh/helm/v3/pkg/repo"
 	"io"
 	"net/http"
 	"net/url"
 	"path/filepath"
+
+	"github.com/hashicorp/go-version"
+	"golang.org/x/xerrors"
+	helmrepo "helm.sh/helm/v3/pkg/repo"
 	"sigs.k8s.io/yaml"
 )
 
