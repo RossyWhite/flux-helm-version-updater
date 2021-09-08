@@ -46,12 +46,13 @@ type helmVersionUpdater struct {
 
 // config holds the arguments given by users
 type config struct {
-	GithubToken string `mapstructure:"github-token"`
-	Name        string `mapstructure:"git-name"`
-	Email       string `mapstructure:"git-email"`
-	Target      string `mapstructure:"target"`
-	Path        string `mapstructure:"path"`
-	Prefix      string `mapstructure:"prefix"`
+	GithubToken   string `mapstructure:"github-token"`
+	GithubBaseURL string `mapstructure:"github-base-url"`
+	Name          string `mapstructure:"git-name"`
+	Email         string `mapstructure:"git-email"`
+	Target        string `mapstructure:"target"`
+	Path          string `mapstructure:"path"`
+	Prefix        string `mapstructure:"prefix"`
 }
 
 // initScheme initializes a new scheme, with related CRDs
@@ -66,6 +67,7 @@ func initScheme() *runtime.Scheme {
 // initConf parses command line args and create *config with them
 func initConf() *config {
 	pflag.String("github-token", "", "Access token of GitHub")
+	pflag.String("github-base-url", "", "Base URL of GitHub API (For Github Enterprise)")
 	pflag.String("git-name", "", "Name of the git user")
 	pflag.String("git-email", "", "Name address of the git user")
 	pflag.String("target", "", "Target repository name in http format")
@@ -219,34 +221,32 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 		return xerrors.Errorf("failed to set new version: %+w", err)
 	}
 
-	if s, _ := r.wt.Status(); s.String() == "" {
-		return nil
-	}
+	if s, _ := r.wt.Status(); s.String() != "" {
+		if _, err := r.wt.Add("."); err != nil {
+			return xerrors.Errorf("failed to add: %+w", err)
+		}
 
-	if _, err := r.wt.Add("."); err != nil {
-		return xerrors.Errorf("failed to add: %+w", err)
-	}
+		msg := fmt.Sprintf("Update HelmRelease %s/%s to %s", hr.Namespace, hr.Name, v)
+		if r.conf.Prefix != "" {
+			msg = fmt.Sprintf("[%s] %s", r.conf.Prefix, msg)
+		}
+		if _, err := r.wt.Commit(msg, &git.CommitOptions{
+			Author: &object.Signature{
+				Name:  r.conf.Name,
+				Email: r.conf.Email,
+				When:  time.Now(),
+			},
+		}); err != nil {
+			return xerrors.Errorf("failed to commit: %+w", err)
+		}
 
-	msg := fmt.Sprintf("Update HelmRelease %s/%s to %s", hr.Namespace, hr.Name, v)
-	if r.conf.Prefix != "" {
-		msg = fmt.Sprintf("[%s] %s", r.conf.Prefix, msg)
-	}
-	if _, err := r.wt.Commit(msg, &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  r.conf.Name,
-			Email: r.conf.Email,
-			When:  time.Now(),
-		},
-	}); err != nil {
-		return xerrors.Errorf("failed to commit: %+w", err)
-	}
-
-	if err := r.repo.Push(&git.PushOptions{
-		Auth:       &http.BasicAuth{Username: r.conf.GithubToken},
-		Progress:   io.Discard,
-		RemoteName: "origin",
-	}); err != nil {
-		return xerrors.Errorf("failed to push: %+w", err)
+		if err := r.repo.Push(&git.PushOptions{
+			Auth:       &http.BasicAuth{Username: r.conf.GithubToken},
+			Progress:   io.Discard,
+			RemoteName: "origin",
+		}); err != nil {
+			return xerrors.Errorf("failed to push: %+w", err)
+		}
 	}
 
 	gh := github.NewClient(
@@ -262,6 +262,14 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 	}
 
 	owner, repo := parseRepoURL(r.conf.Target)
+	if r.conf.GithubBaseURL != "" {
+		u, err := url.Parse(r.conf.GithubBaseURL)
+		if err != nil {
+			return xerrors.Errorf("failed to parse github base url: %+w", err)
+		}
+		gh.BaseURL = u
+	}
+
 	if _, _, err := gh.PullRequests.Create(ctx, owner, repo, pr); err != nil {
 		if ghErr, ok := err.(*github.ErrorResponse); ok {
 			if strings.Contains(ghErr.Error(), "already exists") {
