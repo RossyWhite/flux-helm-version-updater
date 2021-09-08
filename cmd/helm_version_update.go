@@ -262,14 +262,12 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 	}
 
 	owner, repo := parseRepoURL(r.conf.Target)
-	if prs, _, _ := gh.PullRequests.List(ctx, owner, repo,
-		&github.PullRequestListOptions{
-			Base: r.head.Name().Short(),
-			Head: branchName}); len(prs) > 0 {
-		return nil
-	}
-
 	if _, _, err := gh.PullRequests.Create(ctx, owner, repo, pr); err != nil {
+		if ghErr, ok := err.(*github.ErrorResponse); ok {
+			if strings.Contains(ghErr.Error(), "already exists") {
+				return nil
+			}
+		}
 		return xerrors.Errorf("failed to PR: %+w", err)
 	}
 
