@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"errors"
 	"github.com/hashicorp/go-version"
 	"golang.org/x/xerrors"
 	helmrepo "helm.sh/helm/v3/pkg/repo"
@@ -12,7 +13,7 @@ import (
 )
 
 var (
-	ErrAlreadyUpToDate = xerrors.New("current version is already up-to-date")
+	ErrAlreadyUpToDate = errors.New("current version is already up-to-date")
 )
 
 type chartRepo struct {
