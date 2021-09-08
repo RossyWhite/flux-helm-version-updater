@@ -1,13 +1,14 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: helm-updater-checker
+  name: helm-update-checker
 spec:
   schedule: "* */10 * * *"
   jobTemplate:
     spec:
       template:
         spec:
+          serviceAccountName: helm-update-checker
           containers:
           - name: checker
             image: ghcr.io/rossywhite/flux-helm-version-updater:latest
@@ -22,3 +23,37 @@ spec:
               - name: GITHUB_TOKEN
                 value: <your token>
           restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: helm-update-checker
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: helm-update-checker
+rules:
+  - apiGroups:
+      - "*"
+    resources:
+      - helmreleases
+      - helmrepositories
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: helm-update-checker
+subjects:
+  - kind: ServiceAccount
+    name: helm-update-checker
+roleRef:
+  kind: ClusterRole
+  name: helm-update-checker
+  apiGroup: rbac.authorization.k8s.io
+---
