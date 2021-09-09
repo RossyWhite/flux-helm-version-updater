@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/RossyWhite/flux-helm-version-updater/cmd"
 	"os"
+
+	"github.com/RossyWhite/flux-helm-version-updater/cmd"
 )
 
 func main() {

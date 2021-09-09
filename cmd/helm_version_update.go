@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	gitconfig "github.com/go-git/go-git/v5/config"
 	"io"
 	"log"
 	"net/url"
@@ -11,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	gitconfig "github.com/go-git/go-git/v5/config"
 
 	"github.com/RossyWhite/flux-helm-version-updater/internal/helm"
 	"github.com/RossyWhite/flux-helm-version-updater/internal/setter"
@@ -255,8 +256,12 @@ func (r *helmVersionUpdater) createVersionUpdatePR(ctx context.Context, hr *helm
 		)),
 	)
 
+	title := fmt.Sprintf("Update HelmRelease %s/%s", hr.Namespace, hr.Name)
+	if r.conf.Prefix != "" {
+		title = fmt.Sprintf("[%s] %s", r.conf.Prefix, title)
+	}
 	pr := &github.NewPullRequest{
-		Title: github.String(fmt.Sprintf("Update HelmRelease %s/%s", hr.Namespace, hr.Name)),
+		Title: github.String(title),
 		Base:  github.String(r.head.Name().Short()),
 		Head:  github.String(branchName),
 	}
